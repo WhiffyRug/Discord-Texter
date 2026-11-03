@@ -1,15 +1,15 @@
 // Discord Bot Dashboard — official bot tokens only
-// Run: npm install && ANTHROPIC_API_KEY=xxx DASH_PASS=yourpass node server.js
+// Run: GEMINI_API_KEY=xxx DASH_PASS=yourpass node server.js
 const express = require('express');
 const fs = require('fs');
 const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
-const Anthropic = require('@anthropic-ai/sdk');
 
 const PORT = process.env.PORT || 3000;
 const PASS = process.env.DASH_PASS || 'changeme';
-const MODEL = 'claude-haiku-5-5';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const DB = './data.json';
-const ai = new Anthropic(); // reads ANTHROPIC_API_KEY
+if (!GEMINI_KEY) console.warn('GEMINI_API_KEY missing, replies will fail');
 
 let accounts = fs.existsSync(DB) ? JSON.parse(fs.readFileSync(DB)) : [];
 const save = () => fs.writeFileSync(DB, JSON.stringify(accounts, null, 2));
@@ -23,11 +23,21 @@ async function think(acc, history, mode) {
   const task = mode === 'start'
     ? 'Read the recent chat and post ONE natural message that fits the current topic or starts a light new topic. Output only the message.'
     : 'Reply naturally to the latest message. Output only the reply.';
-  const r = await ai.messages.create({
-    model: MODEL, max_tokens: 150, system: sys + '\n\n' + task,
-    messages: [{ role: 'user', content: history || '(channel is quiet)' }],
-  });
-  return r.content.map(c => c.text || '').join('').trim();
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: sys + '\n\n' + task }] },
+        contents: [{ role: 'user', parts: [{ text: history || '(channel is quiet)' }] }],
+        generationConfig: { maxOutputTokens: 400, temperature: 0.9 },
+      }),
+    }
+  );
+  const j = await res.json();
+  if (!res.ok) throw new Error(j.error?.message || 'Gemini error ' + res.status);
+  return (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
 }
 
 async function transcript(channel, n = 12) {
