@@ -1,0 +1,13 @@
+{
+  "name": "opencord",
+  "version": "1.0.0",
+  "description": "OpenCord Web Console & Token Texter Automation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "discord.js-selfbot-v13": "^14.3.0",
+    "express": "^4.19.2"
+  }
+}

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenCord · Advanced Console & Token Texter</title>
+  <style>
+    :root {
+      --bg: #0b0c10;
+      --card: #151720;
+      --card-border: #222634;
+      --accent: #7c3aed;
+      --accent-hover: #6d28d9;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --success: #10b981;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 1000px; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; border-bottom: 1px solid var(--card-border); padding-bottom: 16px; }
+    h1 { font-size: 22px; display: flex; align-items: center; gap: 10px; color: #fff; }
+    h1 span { color: var(--accent); }
+    .badge-tag { background: rgba(124, 58, 237, 0.15); color: #a78bfa; font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.3); }
+    
+    .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 14px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+    .card h2 { font-size: 16px; margin-bottom: 12px; color: #e5e7eb; display: flex; align-items: center; gap: 8px; }
+    
+    input, textarea, select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--card-border); background: #0e1017; color: var(--text); font-size: 14px; margin: 8px 0 14px 0; outline: none; transition: border 0.2s; }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+    
+    button { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; transition: background 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    button:hover { background: var(--accent-hover); }
+    button.secondary { background: transparent; border: 1px solid var(--card-border); color: var(--text); }
+    button.secondary:hover { background: rgba(255,255,255,0.05); }
+    button.danger { background: var(--danger); }
+    
+    .account-card { background: #11131a; border: 1px solid var(--card-border); border-radius: 10px; padding: 16px; margin-top: 12px; }
+    .row { display: flex; justify-content: space-between; align-items: center; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .offline { background: var(--muted); }
+    
+    .channels-box { max-height: 220px; overflow-y: auto; background: #090a0f; border: 1px solid var(--card-border); border-radius: 8px; padding: 10px; margin: 10px 0; }
+    .channel-label { display: flex; align-items: center; gap: 8px; padding: 6px; font-size: 13px; cursor: pointer; }
+    .channel-label:hover { background: rgba(255,255,255,0.03); border-radius: 4px; }
+    .channel-label input { width: auto; margin: 0; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .mt-2 { margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>⚡ OpenCord <span>Console</span></h1>
+    <div class="badge-tag">Token Texter Engine Active</div>
+  </header>
+
+  <!-- Add Account Card -->
+  <div class="card">
+    <h2>🔑 Connect Discord Account Token</h2>
+    <p class="muted">Paste your account user token or bot token below. It runs securely inside your private deployment.</p>
+    <input id="tokenInput" type="password" placeholder="Enter Account Token (e.g., MTQyMTc4Mb... or Bot Token)">
+    <button onclick="addAccount()">Login & Connect Account</button>
+    <div id="errorBox" class="muted" style="color: var(--danger); margin-top: 8px;"></div>
+  </div>
+
+  <!-- Accounts List / Token Texter Dashboard -->
+  <div class="card">
+    <h2>🤖 Token Texter Manager & Accounts</h2>
+    <div id="accountsList"><p class="muted">Loading connected accounts...</p></div>
+  </div>
+</div>
+
+<script>
+async function api(endpoint, options) {
+  const res = await fetch(endpoint, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
+    body: options?.body ? JSON.stringify(options.body) : undefined
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `Request failed with status ${res.status}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+async function loadAccounts() {
+  const listEl = document.getElementById('accountsList');
+  try {
+    const accounts = await api('/api/accounts');
+    if (accounts.length === 0) {
+      listEl.innerHTML = '<p class="muted">No accounts added yet. Connect a token above to begin 24/7 automated texting.</p>';
+      return;
+    }
+
+    listEl.innerHTML = accounts.map(acc => `
+      <div class="account-card" id="acc-${acc.id}">
+        <div class="row">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <b style="font-size: 15px;">${acc.name}</b>
+            <span class="muted" style="display:flex; align-items:center;">
+              <span class="dot ${acc.status === 'online' ? 'online' : 'offline'}"></span>${acc.status}
+            </span>
+          </div>
+          <div>
+            <button class="secondary" onclick="toggleRun('${acc.id}', ${!acc.enabled})">${acc.enabled ? 'Pause Texter' : 'Start Texter 24/7'}</button>
+            <button class="danger" onclick="removeAcc('${acc.id}')">Remove</button>
+          </div>
+        </div>
+
+        <div class="mt-2 grid-2">
+          <div>
+            <label class="muted">Language / Vibe Style</label>
+            <select id="lang-${acc.id}">
+              <option value="hinglish" ${acc.langMode === 'hinglish' ? 'selected' : ''}>Hinglish (Casual Hindi+English)</option>
+              <option value="english" ${acc.langMode === 'english' ? 'selected' : ''}>Casual English</option>
+              <option value="hindi" ${acc.langMode === 'hindi' ? 'selected' : ''}>Hindi (Roman script)</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">Starter Interval (Minutes)</label>
+            <input type="number" id="interval-${acc.id}" min="5" value="${acc.interval}">
+          </div>
+        </div>
+
+        <div class="mt-2">
+          <label class="muted">Human Persona & Behavior Instructions</label>
+          <textarea id="persona-${acc.id}" rows="3">${acc.persona}</textarea>
+        </div>
+
+        <div class="mt-2">
+          <button class="secondary" onclick="loadGuilds('${acc.id}')">📂 Select Target Servers & Channels</button>
+          <button onclick="saveSettings('${acc.id}')">Save Settings</button>
+        </div>
+
+        <div id="guilds-container-${acc.id}" class="mt-2"></div>
+      </div>
+    `).join('');
+    window.loadedAccounts = accounts;
+  } catch (err) {
+    listEl.innerHTML = `<p class="muted" style="color:var(--danger)">Error loading accounts: ${err.message}</p>`;
+  }
+}
+
+async function addAccount() {
+  const token = document.getElementById('tokenInput').value.trim();
+  const errBox = document.getElementById('errorBox');
+  errBox.textContent = '';
+  if (!token) { errBox.textContent = 'Please enter a valid token.'; return; }
+
+  try {
+    await api('/api/accounts', { method: 'POST', body: { token } });
+    document.getElementById('tokenInput').value = '';
+    loadAccounts();
+  } catch (err) {
+    errBox.textContent = err.message;
+  }
+}
+
+async function loadGuilds(id) {
+  const container = document.getElementById(`guilds-container-${id}`);
+  container.innerHTML = '<p class="muted">Fetching servers and channels...</p>';
+  const acc = window.loadedAccounts.find(x => x.id === id);
+
+  try {
+    const guilds = await api(`/api/accounts/${id}/guilds`);
+    if (guilds.length === 0) {
+      container.innerHTML = '<p class="muted">No text channels or servers found for this token.</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <p class="muted" style="margin-bottom:6px;">Check channels where the AI Token Texter should operate:</p>
+      <div class="channels-box">
+        ${guilds.map(g => `
+          <div style="font-weight:600; font-size:12px; color:var(--accent); margin-top:6px;">${g.name}</div>
+          ${g.channels.map(c => `
+            <label class="channel-label">
+              <input type="checkbox" value="${c.id}" ${acc.channels.includes(c.id) ? 'checked' : ''}>
+              #${c.name}
+            </label>
+          `).join('')}
+        `).join('')}
+      </div>
+      <button onclick="saveChannels('${id}')">Save Target Channels</button>
+    `;
+  } catch (err) {
+    container.innerHTML = `<p class="muted" style="color:var(--danger)">${err.message}</p>`;
+  }
+}
+
+async function saveChannels(id) {
+  const checkboxes = document.querySelectorAll(`#guilds-container-${id} input[type="checkbox"]:checked`);
+  const channels = Array.from(checkboxes).map(cb => cb.value);
+  await api(`/api/accounts/${id}`, { method: 'POST', body: { channels } });
+  alert('Target channels saved successfully!');
+  loadAccounts();
+}
+
+async function saveSettings(id) {
+  const persona = document.getElementById(`persona-${id}`).value;
+  const interval = document.getElementById(`interval-${id}`).value;
+  const langMode = document.getElementById(`lang-${id}`).value;
+
+  await api(`/api/accounts/${id}`, { method: 'POST', body: { persona, interval, langMode } });
+  alert('Account configurations saved & restarted successfully!');
+  loadAccounts();
+}
+
+async function toggleRun(id, enable) {
+  await api(`/api/accounts/${id}`, { method: 'POST', body: { enabled: enable } });
+  loadAccounts();
+}
+
+async function removeAcc(id) {
+  if (confirm('Are you sure you want to remove this account?')) {
+    await api(`/api/accounts/${id}`, { method: 'DELETE' });
+    loadAccounts();
+  }
+}
+
+loadAccounts();
+</script>
+</body>
+</html>
